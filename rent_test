@@ -1,0 +1,11 @@
+import requests
+
+RENTOMETER_API_KEY = 'MyRO-GVjI7BrF7FtaiaEfw'
+
+response = requests.get(
+    'https://www.rentometer.com/api/v1/auth',
+    params={'api_key': RENTOMETER_API_KEY}
+)
+
+print("Status:", response.status_code)
+print("Body:", response.text)

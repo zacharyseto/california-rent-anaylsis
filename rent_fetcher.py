@@ -1,41 +1,71 @@
 import requests
-import json
+import os
+from dotenv import load_dotenv
+import urllib.parse
 import csv
-import time
 
-API_KEY = 'YOUR_RENTOMETER_API_KEY'  # 🔐 Replace with your actual key
-CSV_FILE = 'high_income_zips.csv'
-OUTPUT_FILE = 'rent_data.json'
+# Load API key from .env file
+load_dotenv()
+API_KEY = os.getenv("RENTOMETER_API_KEY")
 
-def fetch_rent(zip_code):
-    url = 'https://api.rentometer.com/v2/summary'
-    params = {
-        'api_key': API_KEY,
-        'address': zip_code,
-        'bedrooms': 3,
-        'bathrooms': 2,
-        'radius': 3
-    }
-    response = requests.get(url, params=params)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"Error for {zip_code}: {response.status_code}")
-        return None
+if not API_KEY:
+    raise ValueError("Missing RENTOMETER_API_KEY in .env file or environment.")
 
-def main():
-    results = {}
-    with open(CSV_FILE) as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            zip_code = row['zip_code']
-            print(f"Checking {zip_code}...")
-            data = fetch_rent(zip_code)
-            if data:
-                results[zip_code] = data
-                time.sleep(2)  # Delay to avoid hitting rate limits
-    with open(OUTPUT_FILE, 'w') as f:
-        json.dump(results, f, indent=2)
+headers = {
+    "Authorization": f"Token {API_KEY}"
+}
 
-if __name__ == '__main__':
-    main()
+# Remove duplicates by converting to a set, then back to list for ordering
+zip_codes = list(set([
+    "94030", "94112", "94112"
+]))
+
+results = []
+
+for zip_code in zip_codes:
+    print(f"Checking {zip_code}...")
+    try:
+        encoded_address = urllib.parse.quote(f"{zip_code}, CA")
+        response = requests.get(
+            "https://www.rentometer.com/api/v1/summary",
+            headers=headers,
+            params={
+                "address": encoded_address,
+                "bedrooms": 3,
+                "baths": "1.5"
+            }
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            mean_rent = data.get("mean")
+            median_rent = data.get("median")
+            print(f"ZIP {zip_code} - Mean: ${mean_rent}, Median: ${median_rent}")
+            results.append({
+                "zip_code": zip_code,
+                "mean_rent": mean_rent,
+                "median_rent": median_rent
+            })
+        else:
+            print(f"Error {response.status_code} for ZIP {zip_code}: {response.text}")
+            results.append({
+                "zip_code": zip_code,
+                "mean_rent": None,
+                "median_rent": None
+            })
+    except Exception as e:
+        print(f"Failed to fetch for {zip_code}: {e}")
+        results.append({
+            "zip_code": zip_code,
+            "mean_rent": None,
+            "median_rent": None
+        })
+
+# Write results to CSV
+output_file = "rent_summary.csv"
+with open(output_file, mode="w", newline="") as csvfile:
+    writer = csv.DictWriter(csvfile, fieldnames=["zip_code", "mean_rent", "median_rent"])
+    writer.writeheader()
+    writer.writerows(results)
+
+print(f"\nExport complete. Data saved to {output_file}")
